@@ -55,6 +55,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.util.*
+import android.telephony.PhoneNumberUtils
+
 
 class MainActivity : ComponentActivity() {
 
@@ -702,46 +704,30 @@ fun toggleFlashlight(context: Context, turnOn: Boolean, onFlashChange: (Boolean)
     }
 }
 
-// Make Phone Call
-//fun makePhoneCall(context: Context, contact: String): String {
-//    return try {
-//        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
-//            == PackageManager.PERMISSION_GRANTED) {
-//
-//            // For demo, using a placeholder number
-//            val intent = Intent(Intent.ACTION_CALL).apply {
-//                data = Uri.parse("tel:1234567890") // Replace with actual contact lookup
-//            }
-//            context.startActivity(intent)
-//            "Calling $contact..."
-//        } else {
-//            "Phone permission required to make calls"
-//        }
-//    } catch (e: Exception) {
-//        "Unable to make call: ${e.message}"
-//    }
-//}
-
 fun makePhoneCall(context: Context, contactOrNumber: String): String {
-    return try {
+    try {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
-            val phoneNumber = resolveContactToPhoneNumber(context, contactOrNumber)
+            // New logic: Check if input is a phone number
+            val cleanedInput = contactOrNumber.filter { it.isDigit() }
+            val isPhoneNumber = cleanedInput.length >= 7
+            val phoneNumber = if (isPhoneNumber) cleanedInput else resolveContactToPhoneNumber(context, contactOrNumber)
             if (phoneNumber.isNotEmpty()) {
                 val intent = Intent(Intent.ACTION_CALL).apply {
                     data = Uri.parse("tel:$phoneNumber")
                 }
                 context.startActivity(intent)
-                "Calling $contactOrNumber..."
+                return "Calling $phoneNumber..."
             } else {
-                "Could not find the number for $contactOrNumber."
+                return "Could not find the number for $contactOrNumber."
             }
         } else {
-            "Phone call permission required."
+            return "Phone call permission required."
         }
     } catch (e: Exception) {
-        "Unable to make call: ${e.message}"
+        return "Unable to make call: ${e.message}"
     }
 }
+
 
 fun resolveContactToPhoneNumber(context: Context, contactName: String): String {
     val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
@@ -1015,15 +1001,35 @@ fun extractCity(command: String): String {
     }
 }
 
+
 fun extractContactName(command: String): String {
-    val words = command.split(" ")
-    val callIndex = words.indexOfFirst { it.contains("call") || it.contains("message") || it.contains("text") }
-    return if (callIndex != -1 && callIndex < words.size - 1) {
-        words.drop(callIndex + 1).joinToString(" ").trim()
+    // Extract numbers if present
+    val numberRegex = Regex("\\d{7,}") // Match at least 7 consecutive digits
+    val match = numberRegex.find(command)
+    return if (match != null) {
+        match.value
     } else {
-        "contact"
+        // Else, extract the last word(s) which are likely the contact's name
+        val triggerWords = listOf("call", "message", "text", "to")
+        val words = command.split(" ")
+        val lastIndex = words.indexOfLast { it in triggerWords }
+        if (lastIndex != -1 && lastIndex + 1 < words.size) {
+            words.drop(lastIndex + 1).joinToString(" ").trim()
+        } else {
+            command.trim()
+        }
     }
 }
+
+//fun extractContactName(command: String): String {
+//    val words = command.split(" ")
+//    val callIndex = words.indexOfFirst { it.contains("call") || it.contains("message") || it.contains("text") }
+//    return if (callIndex != -1 && callIndex < words.size - 1) {
+//        words.drop(callIndex + 1).joinToString(" ").trim()
+//    } else {
+//        "contact"
+//    }
+//}
 
 fun extractDestination(command: String): String {
     val words = command.split(" ")
